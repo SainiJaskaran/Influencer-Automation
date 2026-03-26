@@ -4,6 +4,10 @@ const config = require("./config");
 const connectDB = require("./utils/db");
 const log = require("./utils/logger");
 const influencerRoutes = require("./routes/influencerRoutes");
+const campaignRoutes = require("./routes/campaignRoutes");
+const safetyRoutes = require("./routes/safetyRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const { initializeSchedules } = require("./services/schedulerService");
 
 const app = express();
 
@@ -16,9 +20,14 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/influencers", influencerRoutes);
+app.use("/api/campaigns", campaignRoutes);
+app.use("/api/safety", safetyRoutes);
+app.use("/api/reports", reportRoutes);
 
 // Start
 connectDB().then(() => {
+  initializeSchedules();
+
   app.listen(config.port, () => {
     log.success(`Server running on port ${config.port}`);
   });

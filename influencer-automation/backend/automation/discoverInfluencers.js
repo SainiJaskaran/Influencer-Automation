@@ -7,6 +7,7 @@ const { dismissAllPopups } = require("../utils/popupHandler");
 const { parseFollowers, passesFilters } = require("../utils/parser");
 const { saveInfluencer } = require("../services/influencerService");
 const { analyzeInfluencer } = require("../utils/influencerAnalyzer");
+const { checkAndLog } = require("../services/rateLimitService");
 
 const processedUsers = new Set();
 
@@ -257,6 +258,13 @@ async function scrapeEngagement(page, username) {
 
     log.info(`Starting discovery for #${hashtag}`);
 
+    // Rate limit check before each hashtag search
+    const searchCheck = await checkAndLog("search_performed", { metadata: { hashtag } });
+    if (!searchCheck.allowed) {
+      log.warn(`Rate limit reached for searches: ${searchCheck.reason}. Stopping discovery.`);
+      break;
+    }
+
     try {
       await safeGoto(page, `https://www.instagram.com/explore/tags/${hashtag}/`);
     } catch (err) {
@@ -345,6 +353,13 @@ async function scrapeEngagement(page, username) {
 
         processedUsers.add(username);
 
+        // Rate limit check before profile visit
+        const profileCheck = await checkAndLog("profile_visited", { influencerUsername: username });
+        if (!profileCheck.allowed) {
+          log.warn(`Rate limit reached for profile visits: ${profileCheck.reason}. Stopping.`);
+          break;
+        }
+
         // Navigate to profile
         await safeGoto(page, `https://www.instagram.com/${username}/`);
         await randomDelay(page, config.delays.pageLoad);
@@ -410,6 +425,7 @@ async function scrapeEngagement(page, username) {
           avgComments,
           bio,
           niche: hashtag,
+          sourceHashtag: hashtag,
           instagramUrl: `https://www.instagram.com/${username}/`,
         });
 
@@ -541,6 +557,7 @@ async function scrapeEngagement(page, username) {
             avgComments,
             bio,
             niche: hashtag,
+            sourceHashtag: hashtag,
             instagramUrl: `https://www.instagram.com/${username}/`,
           });
 

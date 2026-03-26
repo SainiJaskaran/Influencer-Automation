@@ -6,6 +6,7 @@ const { safeGoto, randomDelay } = require("../utils/safeGoto");
 const { dismissAllPopups } = require("../utils/popupHandler");
 const { getNewInfluencers, markContacted } = require("../services/influencerService");
 const { buildOutreachMessage } = require("../services/messageService");
+const { checkAndLog } = require("../services/rateLimitService");
 
 // --- Selectors with fallbacks ---
 const SELECTORS = {
@@ -96,7 +97,15 @@ async function findMessageBox(page) {
     const { username } = influencer;
     log.info(`Opening profile: ${username}`);
 
+    // Rate limit check before each DM
+    const rateCheck = await checkAndLog("dm_sent", { influencerUsername: username });
+    if (!rateCheck.allowed) {
+      log.warn(`Rate limit reached: ${rateCheck.reason}. Stopping DM session.`);
+      break;
+    }
+
     try {
+      await checkAndLog("profile_visited", { influencerUsername: username });
       await safeGoto(page, `https://www.instagram.com/${username}/`);
       await page.waitForSelector("header", { timeout: 15000 });
       await dismissAllPopups(page);
@@ -113,14 +122,11 @@ async function findMessageBox(page) {
     }
 
     // Click the Message button
-    await randomDelay(page, config.delays.pageLoad);
     const clicked = await clickMessageButton(page);
     if (!clicked) {
       log.warn(`Message button not found for ${username}`);
       continue;
     }
-
-    await randomDelay(page, config.delays.pageLoad);
 
     // Dismiss any popups (notification prompt often appears here)
     await dismissAllPopups(page);

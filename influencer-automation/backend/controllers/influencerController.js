@@ -1,11 +1,7 @@
-const { spawn } = require("child_process");
-const path = require("path");
 const Influencer = require("../models/Influencer");
 const config = require("../config");
 const log = require("../utils/logger");
-
-// Track running automation processes
-const runningProcesses = {};
+const { startProcess, stopProcess, stopAll, getRunning } = require("../services/processManager");
 
 exports.createInfluencer = async (req, res) => {
   try {
@@ -39,7 +35,6 @@ exports.getStats = async (req, res) => {
       ? parseFloat(((replied / contacted) * 100).toFixed(1))
       : 0;
 
-    // Averages
     const avgPipeline = await Influencer.aggregate([
       {
         $group: {
@@ -63,49 +58,12 @@ exports.getStats = async (req, res) => {
       avgEngagement: parseFloat((avgs.avgEngagement || 0).toFixed(2)),
       avgScore: Math.round(avgs.avgScore || 0),
       avgReach: Math.round(avgs.avgReach || 0),
-      running: Object.keys(runningProcesses),
+      running: getRunning(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
-
-/**
- * Start an automation process (discovery, send-dm, check-replies).
- */
-function startProcess(name, scriptFile) {
-  if (runningProcesses[name]) {
-    return { started: false, message: `${name} is already running` };
-  }
-
-  const scriptPath = path.join(__dirname, "..", "automation", scriptFile);
-  const child = spawn("node", [scriptPath], {
-    stdio: "pipe",
-    cwd: path.join(__dirname, ".."),
-  });
-
-  runningProcesses[name] = child;
-
-  child.stdout.on("data", (data) => {
-    log.info(`[${name}] ${data.toString().trim()}`);
-  });
-
-  child.stderr.on("data", (data) => {
-    log.error(`[${name}] ${data.toString().trim()}`);
-  });
-
-  child.on("close", (code) => {
-    log.info(`[${name}] Process exited with code ${code}`);
-    delete runningProcesses[name];
-  });
-
-  child.on("error", (err) => {
-    log.error(`[${name}] Process error`, { error: err.message });
-    delete runningProcesses[name];
-  });
-
-  return { started: true, message: `${name} started` };
-}
 
 exports.startDiscovery = (req, res) => {
   const result = startProcess("discovery", "discoverInfluencers.js");
@@ -126,24 +84,12 @@ exports.stopProcess = (req, res) => {
   const { name } = req.params;
 
   if (!name || name === "all") {
-    // Stop all
-    const stopped = [];
-    for (const [procName, child] of Object.entries(runningProcesses)) {
-      child.kill("SIGTERM");
-      delete runningProcesses[procName];
-      stopped.push(procName);
-    }
+    const stopped = stopAll();
     return res.json({ stopped, message: `Stopped ${stopped.length} process(es)` });
   }
 
-  const child = runningProcesses[name];
-  if (!child) {
-    return res.json({ stopped: false, message: `${name} is not running` });
-  }
-
-  child.kill("SIGTERM");
-  delete runningProcesses[name];
-  res.json({ stopped: true, message: `${name} stopped` });
+  const result = stopProcess(name);
+  res.json(result);
 };
 
 exports.getSettings = (req, res) => {
@@ -159,13 +105,11 @@ exports.getSettings = (req, res) => {
 exports.updateSettings = (req, res) => {
   const updates = req.body;
 
-  // Update in-memory config
   if (updates.hashtags) config.hashtags = updates.hashtags;
   if (updates.filters) Object.assign(config.filters, updates.filters);
   if (updates.dmBatchSize) config.dmBatchSize = updates.dmBatchSize;
   if (updates.maxPostsPerHashtag) config.maxPostsPerHashtag = updates.maxPostsPerHashtag;
 
-  // Persist to disk so spawned child processes pick up changes
   config.saveConfig(updates);
 
   log.info("Settings updated and saved to disk", updates);

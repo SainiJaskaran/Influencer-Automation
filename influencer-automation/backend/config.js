@@ -34,10 +34,19 @@ const defaults = {
 
   // Delays (milliseconds) — human-like timing
   delays: {
-    betweenDMs: { min: 120000, max: 180000 },       // 2–3 min
+    betweenDMs: { min: 30000, max: 60000 },           // 30s–1 min
     pageLoad: { min: 3000, max: 5000 },
     afterScroll: { min: 3000, max: 5000 },
     typing: { min: 30, max: 80 },                    // per character
+  },
+
+  // Rate limits (safety)
+  rateLimits: {
+    dm_sent: { perHour: 20, perDay: 100 },
+    profile_visited: { perHour: 60, perDay: 500 },
+    search_performed: { perHour: 30, perDay: 200 },
+    reply_checked: { perHour: 40, perDay: 300 },
+    discovery_run: { perHour: 5, perDay: 20 },
   },
 
   // Navigation
@@ -62,6 +71,7 @@ function loadConfig() {
       if (overrides.maxPostsPerHashtag) config.maxPostsPerHashtag = overrides.maxPostsPerHashtag;
       if (overrides.dmBatchSize) config.dmBatchSize = overrides.dmBatchSize;
       if (overrides.filters) Object.assign(config.filters, overrides.filters);
+      if (overrides.rateLimits) config.rateLimits = { ...config.rateLimits, ...overrides.rateLimits };
     }
   } catch (_) {
     // If file is corrupt or missing, use defaults
@@ -86,6 +96,9 @@ function saveConfig(updates) {
   if (updates.dmBatchSize) existing.dmBatchSize = updates.dmBatchSize;
   if (updates.filters) {
     existing.filters = { ...(existing.filters || {}), ...updates.filters };
+  }
+  if (updates.rateLimits) {
+    existing.rateLimits = { ...(existing.rateLimits || {}), ...updates.rateLimits };
   }
 
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(existing, null, 2));

@@ -5,6 +5,7 @@ const log = require("../utils/logger");
 const { safeGoto, randomDelay } = require("../utils/safeGoto");
 const { dismissAllPopups } = require("../utils/popupHandler");
 const { getContactedInfluencers, markReplied } = require("../services/influencerService");
+const { checkAndLog } = require("../services/rateLimitService");
 
 // Build a map of contacted usernames for quick lookup
 async function buildContactedMap() {
@@ -194,6 +195,13 @@ async function openDMThread(page, username) {
     }
 
     log.info(`Checking: ${influencer.username}`);
+
+    // Rate limit check
+    const rateCheck = await checkAndLog("reply_checked", { influencerUsername: influencer.username });
+    if (!rateCheck.allowed) {
+      log.warn(`Rate limit reached: ${rateCheck.reason}. Stopping reply check.`);
+      break;
+    }
 
     const opened = await openDMThread(page, influencer.username);
 

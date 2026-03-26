@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(rm -rf influencer-automation/frontend/.git)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\(''node-cron''\\); console.log\\(''node-cron OK''\\)\")",
+      "Bash(node -e \"require\\(''recharts''\\); console.log\\(''recharts OK''\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(npx react-scripts:*)"
+    ]
+  }
+}

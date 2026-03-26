@@ -53,6 +53,14 @@ const InfluencerSchema = new mongoose.Schema({
 
   country: String,
 
+  sourceHashtag: String,
+
+  campaignId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Campaign",
+    default: null,
+  },
+
   instagramUrl: String,
 
   status: {

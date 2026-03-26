@@ -53,73 +53,59 @@ export default function SettingsPanel({ settings, onSaved }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-4 mb-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Settings</h2>
+    <div className="card p-5">
+      <div className="flex items-center gap-2 mb-5">
+        <svg className="w-5 h-5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <h2 className="text-base font-semibold text-surface-900">Discovery Settings</h2>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Min Followers</label>
-          <input
-            type="number"
-            name="minFollowers"
-            value={form.minFollowers}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
+          <label className="label">Min Followers</label>
+          <input type="number" name="minFollowers" value={form.minFollowers} onChange={handleChange} className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Max Followers</label>
-          <input
-            type="number"
-            name="maxFollowers"
-            value={form.maxFollowers}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
+          <label className="label">Max Followers</label>
+          <input type="number" name="maxFollowers" value={form.maxFollowers} onChange={handleChange} className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Min Engagement</label>
-          <select
-            name="minEngagement"
-            value={form.minEngagement}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 text-sm bg-white"
-          >
+          <label className="label">Min Engagement</label>
+          <select name="minEngagement" value={form.minEngagement} onChange={handleChange} className="select">
             {ENGAGEMENT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Min Reach</label>
-          <input
-            type="number"
-            name="minReach"
-            value={form.minReach}
-            onChange={handleChange}
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
+          <label className="label">Min Reach</label>
+          <input type="number" name="minReach" value={form.minReach} onChange={handleChange} className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Hashtags</label>
-          <input
-            type="text"
-            name="hashtags"
-            value={form.hashtags}
-            onChange={handleChange}
-            placeholder="skincare, beauty, makeup"
-            className="w-full border rounded px-3 py-2 text-sm"
-          />
+          <label className="label">Hashtags</label>
+          <input type="text" name="hashtags" value={form.hashtags} onChange={handleChange} placeholder="skincare, beauty" className="input" />
         </div>
       </div>
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-4 bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50"
-      >
-        {saving ? "Saving..." : "Save Settings"}
-      </button>
+      <div className="mt-5 flex items-center gap-3">
+        <button onClick={handleSave} disabled={saving} className="btn-primary text-xs disabled:opacity-50">
+          {saving ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Saving...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Save Settings
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
