@@ -1,15 +1,56 @@
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000/api/influencers";
-const CAMPAIGNS_BASE = "http://localhost:5000/api/campaigns";
-const SAFETY_BASE = "http://localhost:5000/api/safety";
-const REPORTS_BASE = "http://localhost:5000/api/reports";
+const BASE = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+const API_BASE = `${BASE}/influencers`;
+const CAMPAIGNS_BASE = `${BASE}/campaigns`;
+const SAFETY_BASE = `${BASE}/safety`;
+const REPORTS_BASE = `${BASE}/reports`;
+const AUTH_BASE = `${BASE}/auth`;
+
+function getAuthHeaders() {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function fetchJSON(url, options = {}) {
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+      ...(options.headers || {}),
+    },
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+
+  if (res.status === 401) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.reload();
+    throw new Error("Session expired");
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `API error: ${res.status}`);
+  }
   return res.json();
+}
+
+// --- Auth ---
+export function loginUser(email, password) {
+  return fetchJSON(`${AUTH_BASE}/login`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function registerUser(email, password, name) {
+  return fetchJSON(`${AUTH_BASE}/register`, {
+    method: "POST",
+    body: JSON.stringify({ email, password, name }),
+  });
+}
+
+export function getMe() {
+  return fetchJSON(`${AUTH_BASE}/me`);
 }
 
 // --- Influencers ---
@@ -51,6 +92,26 @@ export function updateSettings(settings) {
 
 export function deleteInfluencer(id) {
   return fetchJSON(`${API_BASE}/${id}`, { method: "DELETE" });
+}
+
+export function getSessionStatus() {
+  return fetchJSON(`${API_BASE}/session-status`);
+}
+
+export function connectInstagram() {
+  return fetchJSON(`${API_BASE}/connect-instagram`, { method: "POST" });
+}
+
+export function getConnectStatus() {
+  return fetchJSON(`${API_BASE}/connect-status`);
+}
+
+export function cancelConnect() {
+  return fetchJSON(`${API_BASE}/cancel-connect`, { method: "POST" });
+}
+
+export function disconnectInstagram() {
+  return fetchJSON(`${API_BASE}/disconnect-instagram`, { method: "POST" });
 }
 
 // --- Campaigns ---
@@ -111,8 +172,12 @@ export function updateRateLimits(limits) {
 
 // --- Reports ---
 export function exportCSV(params = {}) {
+  const token = localStorage.getItem("token");
   const query = new URLSearchParams(params).toString();
-  window.open(`${REPORTS_BASE}/export/csv${query ? `?${query}` : ""}`, "_blank");
+  const url = `${REPORTS_BASE}/export/csv${query ? `?${query}` : ""}`;
+  // For file downloads, append token as query param since we can't set headers on window.open
+  const separator = url.includes("?") ? "&" : "?";
+  window.open(`${url}${separator}token=${token}`, "_blank");
 }
 
 export function getConversionFunnel(campaignId) {

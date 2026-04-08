@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import "./App.css";
 import { getInfluencers, getStats, getSettings } from "./api";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import LoginPage from "./pages/LoginPage";
 import StatsPanel from "./components/StatsPanel";
 import ActionButtons from "./components/ActionButtons";
 import InfluencerTable from "./components/InfluencerTable";
@@ -9,6 +11,7 @@ import LogsPanel from "./components/LogsPanel";
 import CampaignList from "./components/CampaignList";
 import SafetyDashboard from "./components/SafetyDashboard";
 import ReportsPanel from "./components/ReportsPanel";
+import InstagramConnect from "./components/InstagramConnect";
 
 const NAV_ITEMS = [
   {
@@ -49,7 +52,8 @@ const NAV_ITEMS = [
   },
 ];
 
-function App() {
+function Dashboard() {
+  const { user, logout } = useAuth();
   const [influencers, setInfluencers] = useState([]);
   const [stats, setStats] = useState({});
   const [settings, setSettings] = useState(null);
@@ -58,6 +62,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sessionKey, setSessionKey] = useState(0);
 
   const addLog = useCallback((entry) => {
     const time = new Date().toLocaleTimeString();
@@ -87,10 +92,14 @@ function App() {
     getSettings().then(setSettings).catch(() => {});
   }, []);
 
-  function handleAction(result) {
+  const handleAction = useCallback((result) => {
     addLog(result);
     loadData();
-  }
+    // Refresh session status in ActionButtons when Instagram connects/disconnects
+    if (result.message && (result.message.includes("Instagram connected") || result.message.includes("Disconnect"))) {
+      setSessionKey((k) => k + 1);
+    }
+  }, [addLog, loadData]);
 
   return (
     <div className="min-h-screen bg-surface-50 flex">
@@ -141,20 +150,47 @@ function App() {
           })}
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="p-3 border-t border-white/[0.08]">
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-surface-500 hover:text-surface-300 hover:bg-white/[0.06] text-sm transition-all"
-          >
-            <svg
-              className={`w-4 h-4 transition-transform duration-300 ${sidebarCollapsed ? "rotate-180" : ""}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        {/* User info + Collapse */}
+        <div className="border-t border-white/[0.08]">
+          {/* User section */}
+          {!sidebarCollapsed && user && (
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                {(user.name || user.email || "U").charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{user.name || "User"}</div>
+                <div className="text-xs text-surface-500 truncate">{user.email}</div>
+              </div>
+            </div>
+          )}
+
+          <div className="px-3 pb-3 flex gap-2">
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-surface-500 hover:text-surface-300 hover:bg-white/[0.06] text-sm transition-all"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-            </svg>
-            {!sidebarCollapsed && <span>Collapse</span>}
-          </button>
+              <svg
+                className={`w-4 h-4 transition-transform duration-300 ${sidebarCollapsed ? "rotate-180" : ""}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+              {!sidebarCollapsed && <span>Collapse</span>}
+            </button>
+
+            {!sidebarCollapsed && (
+              <button
+                onClick={logout}
+                className="px-3 py-2 rounded-lg text-surface-500 hover:text-red-400 hover:bg-white/[0.06] text-sm transition-all"
+                title="Sign out"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -193,8 +229,9 @@ function App() {
         <main className="px-8 py-6 max-w-[1400px]">
           {activeTab === "dashboard" && (
             <div className="space-y-6">
+              <InstagramConnect onAction={handleAction} />
               <StatsPanel stats={stats} />
-              <ActionButtons onAction={handleAction} />
+              <ActionButtons onAction={handleAction} sessionKey={sessionKey} />
 
               {showSettings && settings && (
                 <SettingsPanel
@@ -214,6 +251,7 @@ function App() {
                   addLog({ type: "success", message: `Removed @${username}` });
                   loadData();
                 }}
+                onError={(msg) => addLog({ type: "error", message: msg })}
               />
 
               <LogsPanel logs={logs} />
@@ -226,6 +264,38 @@ function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+function AppContent() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-surface-500">
+          <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-sm">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return <Dashboard />;
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

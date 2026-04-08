@@ -1,10 +1,16 @@
 const mongoose = require("mongoose");
 
 const CampaignSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true,
+  },
+
   name: {
     type: String,
     required: true,
-    unique: true,
   },
 
   hashtags: [String],
@@ -57,9 +63,10 @@ const CampaignSchema = new mongoose.Schema({
   },
 });
 
-CampaignSchema.pre("save", function (next) {
+CampaignSchema.index({ userId: 1, name: 1 }, { unique: true });
+
+CampaignSchema.pre("save", function () {
   this.updatedAt = new Date();
-  next();
 });
 
 module.exports = mongoose.model("Campaign", CampaignSchema);

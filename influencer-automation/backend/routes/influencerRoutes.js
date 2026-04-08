@@ -12,15 +12,26 @@ const {
   getSettings,
   updateSettings,
   deleteInfluencer,
+  sessionStatus,
+  connectInstagram,
+  connectStatus,
+  cancelConnect,
+  disconnectInstagram,
 } = require("../controllers/influencerController");
 
-// Influencer CRUD
-router.post("/", createInfluencer);
-router.get("/", getInfluencers);
-router.delete("/:id", deleteInfluencer);
-
-// Stats
+// Stats (before /:id to avoid parameter matching)
 router.get("/stats", getStats);
+
+// Session & Instagram connection
+router.get("/session-status", sessionStatus);
+router.post("/connect-instagram", connectInstagram);
+router.get("/connect-status", connectStatus);
+router.post("/cancel-connect", cancelConnect);
+router.post("/disconnect-instagram", disconnectInstagram);
+
+// Settings
+router.get("/settings", getSettings);
+router.post("/settings", updateSettings);
 
 // Automation control
 router.post("/start-discovery", startDiscovery);
@@ -29,8 +40,9 @@ router.post("/start-reply-check", startReplyCheck);
 router.post("/stop/:name", stopProcess);
 router.post("/stop", stopProcess);
 
-// Settings
-router.get("/settings", getSettings);
-router.post("/settings", updateSettings);
+// Influencer CRUD
+router.post("/", createInfluencer);
+router.get("/", getInfluencers);
+router.delete("/:id", deleteInfluencer);
 
 module.exports = router;

@@ -18,6 +18,7 @@ const STEPS = [
 
 export default function CampaignForm({ campaign, onDone, onCancel }) {
   const isEdit = !!campaign;
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     name: campaign?.name || "",
@@ -71,6 +72,7 @@ export default function CampaignForm({ campaign, onDone, onCancel }) {
     };
 
     try {
+      setError("");
       if (isEdit) {
         await updateCampaign(campaign._id, payload);
         onDone(`Campaign "${payload.name}" updated`);
@@ -79,7 +81,7 @@ export default function CampaignForm({ campaign, onDone, onCancel }) {
         onDone(`Campaign "${payload.name}" created`);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      setError(err.message);
     }
     setSaving(false);
   }
@@ -208,6 +210,13 @@ export default function CampaignForm({ campaign, onDone, onCancel }) {
             placeholder="Hi {name}, I came across your {niche} content..."
           />
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl border border-red-100">
+            {error}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2">

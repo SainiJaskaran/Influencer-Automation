@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Influencer Hub — Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+      width: 100%;
+      max-width: 520px;
+      padding: 40px;
+    }
+    .logo {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: linear-gradient(135deg, #4c6ef5, #3b5bdb);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .logo svg { width: 24px; height: 24px; color: white; }
+    h1 { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { text-align: center; color: #64748b; font-size: 13px; margin-bottom: 28px; }
+    label {
+      display: block; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: #64748b; margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%; padding: 10px 14px; font-size: 13px;
+      border: 1px solid #e2e8f0; border-radius: 8px;
+      background: white; color: #1e293b; outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: #4c6ef5; box-shadow: 0 0 0 3px rgba(76,110,245,0.1); }
+    input::placeholder { color: #94a3b8; }
+    .field { margin-bottom: 18px; }
+    .hint { font-size: 11px; color: #94a3b8; margin-top: 5px; line-height: 1.5; }
+    .hint a { color: #4c6ef5; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+    .btn {
+      width: 100%; padding: 12px; font-size: 14px; font-weight: 600;
+      border: none; border-radius: 10px; cursor: pointer;
+      background: linear-gradient(135deg, #4c6ef5, #3b5bdb);
+      color: white; margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error {
+      background: #fef2f2; color: #dc2626; font-size: 12px;
+      padding: 10px 14px; border-radius: 8px; margin-bottom: 16px;
+      border: 1px solid #fecaca; display: none;
+    }
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 20px 0; color: #94a3b8; font-size: 11px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: #e2e8f0;
+    }
+    .steps {
+      background: #f1f5f9; border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 20px; font-size: 12px; color: #475569; line-height: 1.8;
+    }
+    .steps b { color: #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    </div>
+    <h1>Welcome to Influencer Hub</h1>
+    <p class="subtitle">One-time setup — connect your database to get started</p>
+
+    <div class="steps">
+      <b>Quick setup (free):</b><br>
+      1. Go to <a href="#" onclick="openExternal('https://www.mongodb.com/cloud/atlas/register')">mongodb.com/atlas</a> and create a free account<br>
+      2. Create a <b>free M0 cluster</b> (any region)<br>
+      3. Create a database user with a password<br>
+      4. Click <b>Connect → Drivers</b> → copy the connection string<br>
+      5. Paste it below
+    </div>
+
+    <div id="error" class="error"></div>
+
+    <div class="field">
+      <label>MongoDB Connection String</label>
+      <input
+        type="text" id="mongoUri"
+        placeholder="mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/influencerBot"
+        spellcheck="false"
+      />
+      <p class="hint">
+        Paste your Atlas connection string. Replace &lt;password&gt; with your actual password.
+        Add <b>/influencerBot</b> before the <b>?</b> if not present.
+      </p>
+    </div>
+
+    <div class="field">
+      <label>App Password (JWT Secret)</label>
+      <input
+        type="text" id="jwtSecret"
+        placeholder="Enter any secret phrase (e.g., my-secret-key-2024)"
+        spellcheck="false"
+      />
+      <p class="hint">
+        This encrypts your login sessions. Use the <b>same secret</b> on all devices
+        to keep the same accounts.
+      </p>
+    </div>
+
+    <button class="btn" id="saveBtn" onclick="save()">Connect & Start</button>
+
+    <div class="divider">or</div>
+
+    <button class="btn" style="background: #475569;" onclick="useLocal()">
+      Use Local MongoDB (localhost)
+    </button>
+    <p class="hint" style="text-align:center; margin-top:8px;">
+      Only works if MongoDB is installed on this computer
+    </p>
+  </div>
+
+  <script>
+    function openExternal(url) {
+      if (window.electronAPI) {
+        window.electronAPI.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    function save() {
+      showError('');
+      const uri = document.getElementById('mongoUri').value.trim();
+      const secret = document.getElementById('jwtSecret').value.trim();
+
+      if (!uri) { showError('Please enter a MongoDB connection string'); return; }
+      if (!uri.startsWith('mongodb')) { showError('Connection string must start with mongodb:// or mongodb+srv://'); return; }
+      if (!secret || secret.length < 6) { showError('JWT secret must be at least 6 characters'); return; }
+
+      // Ensure the URI includes the database name
+      let finalUri = uri;
+      if (uri.includes('mongodb+srv://') && !uri.includes('/influencerBot')) {
+        // Add database name before query params
+        if (uri.includes('?')) {
+          finalUri = uri.replace('?', '/influencerBot?');
+        } else {
+          finalUri = uri + '/influencerBot';
+        }
+      }
+
+      document.getElementById('saveBtn').disabled = true;
+      document.getElementById('saveBtn').textContent = 'Connecting...';
+
+      // Send config to Electron main process
+      const config = { mongoUri: finalUri, jwtSecret: secret };
+      window.electronAPI.saveConfig(config);
+    }
+
+    function useLocal() {
+      const secret = document.getElementById('jwtSecret').value.trim() || 'influencer-hub-local-' + Date.now();
+      const config = {
+        mongoUri: 'mongodb://127.0.0.1:27017/influencerBot',
+        jwtSecret: secret,
+      };
+      window.electronAPI.saveConfig(config);
+    }
+  </script>
+</body>
+</html>

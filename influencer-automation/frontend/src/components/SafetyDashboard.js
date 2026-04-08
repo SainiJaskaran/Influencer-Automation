@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getSafetyDashboard, getActivityLog, updateRateLimits } from "../api";
 
 const ACTION_LABELS = {
@@ -41,7 +41,7 @@ export default function SafetyDashboard({ onAction }) {
   const [limitsForm, setLimitsForm] = useState({});
   const [saving, setSaving] = useState(false);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       const [dash, act] = await Promise.all([
         getSafetyDashboard(),
@@ -52,14 +52,13 @@ export default function SafetyDashboard({ onAction }) {
     } catch (err) {
       onAction({ type: "error", message: `Safety data load failed: ${err.message}` });
     }
-  }
+  }, [onAction]);
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadData]);
 
   function startEditLimits() {
     const form = {};

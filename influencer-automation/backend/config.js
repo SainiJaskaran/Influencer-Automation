@@ -1,15 +1,23 @@
-require("dotenv").config();
 const path = require("path");
 const fs = require("fs");
+const paths = require("./utils/paths");
 
-const SETTINGS_PATH = path.resolve(__dirname, "settings-override.json");
+// Load .env from the correct location (DATA_DIR or backend dir)
+require("dotenv").config({ path: paths.envPath() });
+
+const SETTINGS_PATH = paths.settingsPath();
+
+// Built-in cloud database — works for every installation
+const CLOUD_MONGO_URI = "mongodb+srv://jia2haseeb_db_user:qwerty%40123@influencer.md1wsub.mongodb.net/influencerBot?retryWrites=true&w=majority&appName=influencer";
+const CLOUD_JWT_SECRET = "influencer-hub-prod-j2h-2024-secure";
 
 // Default values
 const defaults = {
   // Server
   port: process.env.PORT || 5000,
-  mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/influencerBot",
-  sessionPath: path.resolve(__dirname, process.env.SESSION_PATH || "session.json"),
+  mongoUri: process.env.MONGODB_URI || CLOUD_MONGO_URI,
+  jwtSecret: process.env.JWT_SECRET || CLOUD_JWT_SECRET,
+  sessionPath: paths.legacySessionPath(),
 
   // Discovery
   hashtags: ["skincare", "beauty", "makeup", "fashion"],
@@ -20,9 +28,9 @@ const defaults = {
   filters: {
     minFollowers: 10000,
     maxFollowers: 200000,
-    minEngagement: 2,          // minimum engagement rate %
-    minReach: 3000,            // minimum estimated reach
-    rejectFake: true,          // reject HIGH_FAKE influencers
+    minEngagement: 2,
+    minReach: 3000,
+    rejectFake: true,
     nicheKeywords: ["beauty", "skincare", "makeup", "fashion", "cosmetics", "skin", "glow", "haircare"],
   },
 
@@ -34,10 +42,10 @@ const defaults = {
 
   // Delays (milliseconds) — human-like timing
   delays: {
-    betweenDMs: { min: 30000, max: 60000 },           // 30s–1 min
+    betweenDMs: { min: 30000, max: 60000 },
     pageLoad: { min: 3000, max: 5000 },
     afterScroll: { min: 3000, max: 5000 },
-    typing: { min: 30, max: 80 },                    // per character
+    typing: { min: 30, max: 80 },
   },
 
   // Rate limits (safety)
@@ -58,8 +66,7 @@ const defaults = {
 };
 
 /**
- * Load saved overrides from settings-override.json.
- * Merges on top of defaults so child processes always get latest settings.
+ * Load saved overrides from settings-override.json (in DATA_DIR).
  */
 function loadConfig() {
   const config = JSON.parse(JSON.stringify(defaults));
@@ -81,7 +88,7 @@ function loadConfig() {
 }
 
 /**
- * Save settings overrides to disk so spawned child processes read them.
+ * Save settings overrides to DATA_DIR so spawned child processes read them.
  */
 function saveConfig(updates) {
   let existing = {};
@@ -104,9 +111,58 @@ function saveConfig(updates) {
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(existing, null, 2));
 }
 
+/**
+ * Load config for automation child processes.
+ * Reads AUTOMATION_USER_ID env var and loads per-user settings from DB.
+ */
+async function getConfigForAutomation() {
+  const userId = process.env.AUTOMATION_USER_ID;
+  const cfg = loadConfig();
+
+  if (!userId) {
+    return cfg;
+  }
+
+  try {
+    const UserSettings = require("./models/UserSettings");
+    const settings = await UserSettings.findOne({ userId });
+
+    if (settings) {
+      if (settings.hashtags && settings.hashtags.length) cfg.hashtags = settings.hashtags;
+      if (settings.maxPostsPerHashtag) cfg.maxPostsPerHashtag = settings.maxPostsPerHashtag;
+      if (settings.dmBatchSize) cfg.dmBatchSize = settings.dmBatchSize;
+      if (settings.messageTemplates && settings.messageTemplates.length) {
+        cfg.messageTemplates = settings.messageTemplates;
+      }
+      if (settings.filters) {
+        const f = settings.filters.toObject ? settings.filters.toObject() : settings.filters;
+        Object.assign(cfg.filters, f);
+      }
+      if (settings.rateLimits) {
+        const r = settings.rateLimits.toObject ? settings.rateLimits.toObject() : settings.rateLimits;
+        for (const key of Object.keys(r)) {
+          if (r[key] && (r[key].perHour || r[key].perDay)) {
+            cfg.rateLimits[key] = { ...cfg.rateLimits[key], ...r[key] };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    const log = require("./utils/logger");
+    log.warn("Failed to load user settings, using defaults", { userId, error: err.message });
+  }
+
+  // Per-user session path — in writable DATA_DIR
+  cfg.sessionPath = paths.userSessionPath(userId);
+  cfg.userId = userId;
+
+  return cfg;
+}
+
 const config = loadConfig();
 config.saveConfig = saveConfig;
 config.loadConfig = loadConfig;
+config.getConfigForAutomation = getConfigForAutomation;
 config.SETTINGS_PATH = SETTINGS_PATH;
 
 module.exports = config;

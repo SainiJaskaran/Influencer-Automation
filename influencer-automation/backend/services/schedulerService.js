@@ -12,8 +12,9 @@ const STEP_SCRIPTS = {
   "check-replies": "checkReplies.js",
 };
 
-function startCampaignSchedule(campaign) {
+function startCampaignSchedule(campaign, userId) {
   const id = campaign._id.toString();
+  const uid = userId || campaign.userId.toString();
 
   if (activeJobs.has(id)) {
     log.warn(`Campaign ${campaign.name} already scheduled, stopping old job first`);
@@ -35,12 +36,12 @@ function startCampaignSchedule(campaign) {
         const script = STEP_SCRIPTS[step];
         if (!script) continue;
 
-        const processName = `campaign-${campaign.name}-${step}`;
-        const result = startProcess(processName, script);
+        const processName = `${uid}-campaign-${campaign.name}-${step}`;
+        const result = startProcess(processName, script, uid);
         log.info(`[Scheduler] ${step}: ${result.message}`);
       }
 
-      await Campaign.findByIdAndUpdate(id, { lastRunAt: new Date() });
+      await Campaign.findOneAndUpdate({ _id: id, userId: uid }, { lastRunAt: new Date() });
     } catch (err) {
       log.error(`[Scheduler] Error running campaign ${campaign.name}`, { error: err.message });
     }
@@ -69,7 +70,7 @@ async function initializeSchedules() {
     log.info(`[Scheduler] Initializing ${activeCampaigns.length} active campaign(s)`);
 
     for (const campaign of activeCampaigns) {
-      startCampaignSchedule(campaign);
+      startCampaignSchedule(campaign, campaign.userId.toString());
     }
   } catch (err) {
     log.error("[Scheduler] Failed to initialize schedules", { error: err.message });

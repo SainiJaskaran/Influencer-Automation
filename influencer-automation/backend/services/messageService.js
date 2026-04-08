@@ -12,18 +12,19 @@ function generateMessage(template, data) {
 }
 
 /**
- * Get a random message template from config.
+ * Get a random message template from the provided list or config defaults.
  */
-function getRandomTemplate() {
-  const templates = config.messageTemplates;
-  return templates[Math.floor(Math.random() * templates.length)];
+function getRandomTemplate(templates) {
+  const list = templates && templates.length ? templates : config.messageTemplates;
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 /**
  * Build a personalized outreach message for an influencer.
+ * Accepts optional templates array for per-user customization.
  */
-function buildOutreachMessage(influencer) {
-  const template = getRandomTemplate();
+function buildOutreachMessage(influencer, templates) {
+  const template = getRandomTemplate(templates);
   return generateMessage(template, {
     name: influencer.name || influencer.username,
     niche: influencer.niche || "content",

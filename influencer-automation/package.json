@@ -1,0 +1,58 @@
+{
+  "name": "influencer-hub",
+  "version": "1.0.0",
+  "description": "Influencer Outreach Automation Desktop App",
+  "main": "electron/main.js",
+  "author": "Jaskaran Saini",
+  "license": "MIT",
+  "scripts": {
+    "install-all": "cd backend && npm install && cd ../frontend && npm install",
+    "build-frontend": "cd frontend && npm run build",
+    "dev": "cd backend && npm run dev",
+    "start": "electron .",
+    "prebuild": "npm run build-frontend",
+    "build": "electron-builder --win",
+    "build-portable": "electron-builder --win portable",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^35.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.influencerhub.app",
+    "productName": "Influencer Hub",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "frontend/build/**/*",
+      "!frontend/node_modules",
+      "!frontend/src",
+      "!**/sessions/*.json",
+      "!backend/session.json",
+      "!backend/.env"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerSidebar": null,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Influencer Hub"
+    },
+    "asar": false
+  }
+}

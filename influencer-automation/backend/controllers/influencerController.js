@@ -1,11 +1,18 @@
 const Influencer = require("../models/Influencer");
-const config = require("../config");
 const log = require("../utils/logger");
-const { startProcess, stopProcess, stopAll, getRunning } = require("../services/processManager");
+const { startProcess, stopProcess: stopProc, getRunning, stopAllForUser, getRunningForUser } = require("../services/processManager");
+const { getUserSettings, updateUserSettings } = require("../services/userSettingsService");
+const { ensureUserSession, getSessionStatus } = require("../services/sessionService");
+const {
+  startLoginBrowser,
+  getLoginStatus,
+  cancelLogin,
+  disconnectInstagram,
+} = require("../services/instagramConnectService");
 
 exports.createInfluencer = async (req, res) => {
   try {
-    const influencer = new Influencer(req.body);
+    const influencer = new Influencer({ ...req.body, userId: req.userId });
     await influencer.save();
     res.json(influencer);
   } catch (err) {
@@ -16,7 +23,8 @@ exports.createInfluencer = async (req, res) => {
 exports.getInfluencers = async (req, res) => {
   try {
     const { status } = req.query;
-    const filter = status ? { status } : {};
+    const filter = { userId: req.userId };
+    if (status) filter.status = status;
     const influencers = await Influencer.find(filter).sort({ createdAt: -1 });
     res.json(influencers);
   } catch (err) {
@@ -26,16 +34,21 @@ exports.getInfluencers = async (req, res) => {
 
 exports.getStats = async (req, res) => {
   try {
-    const total = await Influencer.countDocuments();
-    const contacted = await Influencer.countDocuments({ status: "CONTACTED" });
-    const replied = await Influencer.countDocuments({ status: "REPLIED" });
-    const newCount = await Influencer.countDocuments({ status: "NEW" });
-    const deals = await Influencer.countDocuments({ status: "DEAL" });
+    const uid = { userId: req.userId };
+    const total = await Influencer.countDocuments(uid);
+    const contacted = await Influencer.countDocuments({ ...uid, status: "CONTACTED" });
+    const replied = await Influencer.countDocuments({ ...uid, status: "REPLIED" });
+    const newCount = await Influencer.countDocuments({ ...uid, status: "NEW" });
+    const deals = await Influencer.countDocuments({ ...uid, status: "DEAL" });
     const conversionRate = contacted > 0
       ? parseFloat(((replied / contacted) * 100).toFixed(1))
       : 0;
 
+    const mongoose = require("mongoose");
+    const userObjId = new mongoose.Types.ObjectId(req.userId);
+
     const avgPipeline = await Influencer.aggregate([
+      { $match: { userId: userObjId } },
       {
         $group: {
           _id: null,
@@ -58,7 +71,7 @@ exports.getStats = async (req, res) => {
       avgEngagement: parseFloat((avgs.avgEngagement || 0).toFixed(2)),
       avgScore: Math.round(avgs.avgScore || 0),
       avgReach: Math.round(avgs.avgReach || 0),
-      running: getRunning(),
+      running: getRunningForUser(req.userId),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -66,69 +79,145 @@ exports.getStats = async (req, res) => {
 };
 
 exports.startDiscovery = (req, res) => {
-  const result = startProcess("discovery", "discoverInfluencers.js");
-  res.json(result);
+  try {
+    const session = ensureUserSession(req.userId);
+    if (!session.exists) {
+      return res.status(400).json({ error: session.error });
+    }
+    const result = startProcess(`${req.userId}-discovery`, "discoverInfluencers.js", req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.startDM = (req, res) => {
-  const result = startProcess("send-dm", "sendDM.js");
-  res.json(result);
+  try {
+    const session = ensureUserSession(req.userId);
+    if (!session.exists) {
+      return res.status(400).json({ error: session.error });
+    }
+    const result = startProcess(`${req.userId}-send-dm`, "sendDM.js", req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.startReplyCheck = (req, res) => {
-  const result = startProcess("check-replies", "checkReplies.js");
-  res.json(result);
+  try {
+    const session = ensureUserSession(req.userId);
+    if (!session.exists) {
+      return res.status(400).json({ error: session.error });
+    }
+    const result = startProcess(`${req.userId}-check-replies`, "checkReplies.js", req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.stopProcess = (req, res) => {
-  const { name } = req.params;
+  try {
+    const { name } = req.params;
 
-  if (!name || name === "all") {
-    const stopped = stopAll();
-    return res.json({ stopped, message: `Stopped ${stopped.length} process(es)` });
+    if (!name || name === "all") {
+      const stopped = stopAllForUser(req.userId);
+      return res.json({ stopped, message: `Stopped ${stopped.length} process(es)` });
+    }
+
+    const fullName = `${req.userId}-${name}`;
+    const result = stopProc(fullName);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const result = stopProcess(name);
-  res.json(result);
 };
 
-exports.getSettings = (req, res) => {
-  res.json({
-    hashtags: config.hashtags,
-    filters: config.filters,
-    dmBatchSize: config.dmBatchSize,
-    delays: config.delays,
-    maxPostsPerHashtag: config.maxPostsPerHashtag,
-  });
+exports.getSettings = async (req, res) => {
+  try {
+    const settings = await getUserSettings(req.userId);
+    res.json({
+      hashtags: settings.hashtags,
+      filters: settings.filters,
+      dmBatchSize: settings.dmBatchSize,
+      maxPostsPerHashtag: settings.maxPostsPerHashtag,
+      messageTemplates: settings.messageTemplates,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-exports.updateSettings = (req, res) => {
-  const updates = req.body;
+exports.updateSettings = async (req, res) => {
+  try {
+    const settings = await updateUserSettings(req.userId, req.body);
+    log.info("Settings updated for user", { userId: req.userId });
+    res.json({
+      message: "Settings updated",
+      settings: {
+        hashtags: settings.hashtags,
+        filters: settings.filters,
+        dmBatchSize: settings.dmBatchSize,
+        maxPostsPerHashtag: settings.maxPostsPerHashtag,
+        messageTemplates: settings.messageTemplates,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-  if (updates.hashtags) config.hashtags = updates.hashtags;
-  if (updates.filters) Object.assign(config.filters, updates.filters);
-  if (updates.dmBatchSize) config.dmBatchSize = updates.dmBatchSize;
-  if (updates.maxPostsPerHashtag) config.maxPostsPerHashtag = updates.maxPostsPerHashtag;
+exports.sessionStatus = (req, res) => {
+  try {
+    const status = getSessionStatus(req.userId);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-  config.saveConfig(updates);
+exports.connectInstagram = (req, res) => {
+  try {
+    const result = startLoginBrowser(req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-  log.info("Settings updated and saved to disk", updates);
-  res.json({
-    message: "Settings updated",
-    settings: {
-      hashtags: config.hashtags,
-      filters: config.filters,
-      dmBatchSize: config.dmBatchSize,
-      delays: config.delays,
-      maxPostsPerHashtag: config.maxPostsPerHashtag,
-    },
-  });
+exports.connectStatus = (req, res) => {
+  try {
+    const login = getLoginStatus(req.userId);
+    const session = getSessionStatus(req.userId);
+    res.json({ login, session });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.cancelConnect = (req, res) => {
+  try {
+    const result = cancelLogin(req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.disconnectInstagram = (req, res) => {
+  try {
+    const result = disconnectInstagram(req.userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.deleteInfluencer = async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await Influencer.findByIdAndDelete(id);
+    const result = await Influencer.findOneAndDelete({ _id: id, userId: req.userId });
     if (!result) {
       return res.status(404).json({ error: "Influencer not found" });
     }

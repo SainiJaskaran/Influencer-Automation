@@ -44,7 +44,7 @@ function ScoreRing({ score }) {
   );
 }
 
-export default function InfluencerTable({ influencers, statusFilter, onFilterChange, onDeleted }) {
+export default function InfluencerTable({ influencers, statusFilter, onFilterChange, onDeleted, onError }) {
   const [deleting, setDeleting] = useState(null);
 
   async function handleDelete(inf) {
@@ -54,7 +54,7 @@ export default function InfluencerTable({ influencers, statusFilter, onFilterCha
       await deleteInfluencer(inf._id);
       if (onDeleted) onDeleted(inf.username);
     } catch (err) {
-      alert("Failed to delete: " + err.message);
+      if (onError) onError(err.message);
     }
     setDeleting(null);
   }

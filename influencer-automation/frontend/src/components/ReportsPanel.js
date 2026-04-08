@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -53,7 +53,7 @@ export default function ReportsPanel({ onAction }) {
   const [dailyActivity, setDailyActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function loadReports() {
+  const loadReports = useCallback(async () => {
     setLoading(true);
     try {
       const [f, rr, hp, da] = await Promise.all([
@@ -70,12 +70,11 @@ export default function ReportsPanel({ onAction }) {
       onAction({ type: "error", message: `Failed to load reports: ${err.message}` });
     }
     setLoading(false);
-  }
+  }, [onAction]);
 
   useEffect(() => {
     loadReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadReports]);
 
   if (loading) {
     return (

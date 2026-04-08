@@ -1,16 +1,20 @@
 const Influencer = require("../models/Influencer");
 const ActivityLog = require("../models/ActivityLog");
+const mongoose = require("mongoose");
+
+function userObjectId(req) {
+  return new mongoose.Types.ObjectId(req.userId);
+}
 
 exports.exportCSV = async (req, res) => {
   try {
     const { status, campaignId } = req.query;
-    const filter = {};
+    const filter = { userId: req.userId };
     if (status) filter.status = status;
-    if (campaignId) filter.campaignId = campaignId;
+    if (campaignId) filter.campaignId = new mongoose.Types.ObjectId(campaignId);
 
     const influencers = await Influencer.find(filter).sort({ createdAt: -1 }).lean();
 
-    // Build CSV manually to avoid extra dependency
     const headers = [
       "Username", "Followers", "Engagement Rate", "Estimated Reach",
       "Quality", "Score", "Niche", "Source Hashtag", "Status",
@@ -51,7 +55,8 @@ exports.exportCSV = async (req, res) => {
 exports.getConversionFunnel = async (req, res) => {
   try {
     const { campaignId } = req.query;
-    const match = campaignId ? { campaignId } : {};
+    const match = { userId: req.userId };
+    if (campaignId) match.campaignId = new mongoose.Types.ObjectId(campaignId);
 
     const total = await Influencer.countDocuments(match);
     const contacted = await Influencer.countDocuments({ ...match, status: { $in: ["CONTACTED", "REPLIED", "DEAL"] } });
@@ -73,9 +78,8 @@ exports.getConversionFunnel = async (req, res) => {
 
 exports.getResponseRates = async (req, res) => {
   try {
-    // Group by week using contactedAt
     const pipeline = await Influencer.aggregate([
-      { $match: { contactedAt: { $ne: null } } },
+      { $match: { userId: userObjectId(req), contactedAt: { $ne: null } } },
       {
         $group: {
           _id: {
@@ -107,6 +111,7 @@ exports.getResponseRates = async (req, res) => {
 exports.getHashtagPerformance = async (req, res) => {
   try {
     const pipeline = await Influencer.aggregate([
+      { $match: { userId: userObjectId(req) } },
       {
         $group: {
           _id: { $ifNull: ["$sourceHashtag", "$niche"] },
@@ -144,6 +149,7 @@ exports.getHashtagPerformance = async (req, res) => {
 exports.getPerformanceOverTime = async (req, res) => {
   try {
     const pipeline = await ActivityLog.aggregate([
+      { $match: { userId: userObjectId(req) } },
       {
         $group: {
           _id: {
@@ -156,7 +162,6 @@ exports.getPerformanceOverTime = async (req, res) => {
       { $sort: { "_id.date": 1 } },
     ]);
 
-    // Reshape into { date, dm_sent, profile_visited, ... }
     const dateMap = {};
     for (const entry of pipeline) {
       const date = entry._id.date;

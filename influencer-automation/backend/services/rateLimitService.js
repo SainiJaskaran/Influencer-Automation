@@ -2,30 +2,49 @@ const ActivityLog = require("../models/ActivityLog");
 const config = require("../config");
 const log = require("../utils/logger");
 
-async function logAction(actionType, metadata = {}) {
+async function getUserRateLimits(userId) {
   try {
-    await ActivityLog.create({ actionType, ...metadata });
+    const UserSettings = require("../models/UserSettings");
+    const settings = await UserSettings.findOne({ userId });
+    if (settings && settings.rateLimits) {
+      const merged = { ...config.rateLimits };
+      for (const key of Object.keys(settings.rateLimits.toObject ? settings.rateLimits.toObject() : settings.rateLimits)) {
+        if (settings.rateLimits[key] && (settings.rateLimits[key].perHour || settings.rateLimits[key].perDay)) {
+          merged[key] = { ...merged[key], ...settings.rateLimits[key].toObject ? settings.rateLimits[key].toObject() : settings.rateLimits[key] };
+        }
+      }
+      return merged;
+    }
+  } catch (_) {}
+  return config.rateLimits || {};
+}
+
+async function logAction(userId, actionType, metadata = {}) {
+  try {
+    await ActivityLog.create({ userId, actionType, ...metadata });
   } catch (err) {
     log.error("Failed to log action", { actionType, error: err.message });
   }
 }
 
-async function getActionCount(actionType, windowMs) {
+async function getActionCount(userId, actionType, windowMs) {
   const since = new Date(Date.now() - windowMs);
   return ActivityLog.countDocuments({
+    userId,
     actionType,
     timestamp: { $gte: since },
   });
 }
 
-async function canPerformAction(actionType) {
-  const limits = config.rateLimits && config.rateLimits[actionType];
+async function canPerformAction(userId, actionType) {
+  const allLimits = await getUserRateLimits(userId);
+  const limits = allLimits[actionType];
   if (!limits) {
     return { allowed: true, reason: "No limits configured" };
   }
 
-  const currentHourly = await getActionCount(actionType, 60 * 60 * 1000);
-  const currentDaily = await getActionCount(actionType, 24 * 60 * 60 * 1000);
+  const currentHourly = await getActionCount(userId, actionType, 60 * 60 * 1000);
+  const currentDaily = await getActionCount(userId, actionType, 24 * 60 * 60 * 1000);
 
   if (limits.perHour && currentHourly >= limits.perHour) {
     return {
@@ -59,22 +78,23 @@ async function canPerformAction(actionType) {
   };
 }
 
-async function checkAndLog(actionType, metadata = {}) {
-  const result = await canPerformAction(actionType);
+async function checkAndLog(userId, actionType, metadata = {}) {
+  const result = await canPerformAction(userId, actionType);
   if (result.allowed) {
-    await logAction(actionType, metadata);
+    await logAction(userId, actionType, metadata);
   }
   return result;
 }
 
-async function getCurrentUsage() {
+async function getCurrentUsage(userId) {
   const actionTypes = ["dm_sent", "profile_visited", "search_performed", "reply_checked", "discovery_run"];
+  const allLimits = await getUserRateLimits(userId);
   const usage = {};
 
   for (const actionType of actionTypes) {
-    const limits = (config.rateLimits && config.rateLimits[actionType]) || {};
-    const currentHourly = await getActionCount(actionType, 60 * 60 * 1000);
-    const currentDaily = await getActionCount(actionType, 24 * 60 * 60 * 1000);
+    const limits = allLimits[actionType] || {};
+    const currentHourly = await getActionCount(userId, actionType, 60 * 60 * 1000);
+    const currentDaily = await getActionCount(userId, actionType, 24 * 60 * 60 * 1000);
 
     usage[actionType] = {
       currentHourly,
@@ -89,23 +109,31 @@ async function getCurrentUsage() {
   return usage;
 }
 
-async function getRecentActivity(limit = 50, actionType = null) {
-  const filter = actionType ? { actionType } : {};
+async function getRecentActivity(userId, limit = 50, actionType = null) {
+  const filter = { userId };
+  if (actionType) filter.actionType = actionType;
   return ActivityLog.find(filter)
     .sort({ timestamp: -1 })
     .limit(limit)
     .lean();
 }
 
-function getRateLimits() {
-  return config.rateLimits || {};
+async function getRateLimits(userId) {
+  return getUserRateLimits(userId);
 }
 
-function updateRateLimits(updates) {
-  if (!config.rateLimits) config.rateLimits = {};
-  Object.assign(config.rateLimits, updates);
-  config.saveConfig({ rateLimits: config.rateLimits });
-  return config.rateLimits;
+async function updateRateLimits(userId, updates) {
+  // Ensure full UserSettings document exists first
+  const { getUserSettings } = require("./userSettingsService");
+  await getUserSettings(userId);
+
+  const UserSettings = require("../models/UserSettings");
+  await UserSettings.findOneAndUpdate(
+    { userId },
+    { $set: { rateLimits: updates, updatedAt: new Date() } },
+    { new: true }
+  );
+  return updates;
 }
 
 module.exports = {

@@ -2,18 +2,22 @@ import { useState } from "react";
 import { updateSettings } from "../api";
 
 const ENGAGEMENT_OPTIONS = [
-  { label: "Poor (0 - 1%)", value: 0 },
-  { label: "Average (1 - 3%)", value: 1 },
-  { label: "Good (3 - 5%)", value: 3 },
-  { label: "Great (5 - 8%)", value: 5 },
-  { label: "Excellent (8%+)", value: 8 },
+  { label: "Any (0%+)", value: 0 },
+  { label: "1%+", value: 1 },
+  { label: "2%+", value: 2 },
+  { label: "3%+", value: 3 },
+  { label: "5%+", value: 5 },
+  { label: "8%+", value: 8 },
+  { label: "10%+", value: 10 },
 ];
 
 function engagementValueToKey(val) {
   const num = Number(val);
+  if (num >= 10) return 10;
   if (num >= 8) return 8;
   if (num >= 5) return 5;
   if (num >= 3) return 3;
+  if (num >= 2) return 2;
   if (num >= 1) return 1;
   return 0;
 }

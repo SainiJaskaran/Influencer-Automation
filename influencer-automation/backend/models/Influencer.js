@@ -1,10 +1,16 @@
 const mongoose = require("mongoose");
 
 const InfluencerSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true,
+  },
+
   username: {
     type: String,
     required: true,
-    unique: true,
   },
 
   name: String,
@@ -85,5 +91,7 @@ const InfluencerSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+InfluencerSchema.index({ userId: 1, username: 1 }, { unique: true });
 
 module.exports = mongoose.model("Influencer", InfluencerSchema);

@@ -7,10 +7,9 @@ const {
 
 exports.getDashboard = async (req, res) => {
   try {
-    const usage = await getCurrentUsage();
-    const limits = getRateLimits();
+    const usage = await getCurrentUsage(req.userId);
+    const limits = await getRateLimits(req.userId);
 
-    // Check if any limit is exceeded
     let anyExceeded = false;
     for (const [, data] of Object.entries(usage)) {
       if (data.hourlyPercent >= 100 || data.dailyPercent >= 100) {
@@ -28,7 +27,7 @@ exports.getDashboard = async (req, res) => {
 exports.getActivity = async (req, res) => {
   try {
     const { actionType, limit = 50 } = req.query;
-    const activity = await getRecentActivity(Number(limit), actionType || null);
+    const activity = await getRecentActivity(req.userId, Number(limit), actionType || null);
     res.json(activity);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -37,7 +36,17 @@ exports.getActivity = async (req, res) => {
 
 exports.updateLimits = async (req, res) => {
   try {
-    const limits = updateRateLimits(req.body);
+    const validTypes = ["dm_sent", "profile_visited", "search_performed", "reply_checked", "discovery_run"];
+    const sanitized = {};
+    for (const [key, val] of Object.entries(req.body)) {
+      if (!validTypes.includes(key)) continue;
+      if (!val || typeof val !== "object") continue;
+      sanitized[key] = {
+        perHour: Math.max(0, Math.min(10000, Number(val.perHour) || 0)),
+        perDay: Math.max(0, Math.min(100000, Number(val.perDay) || 0)),
+      };
+    }
+    const limits = await updateRateLimits(req.userId, sanitized);
     res.json({ message: "Rate limits updated", limits });
   } catch (err) {
     res.status(500).json({ error: err.message });

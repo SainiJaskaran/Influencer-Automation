@@ -1,6 +1,7 @@
 const { chromium } = require("playwright");
+const fs = require("fs");
 const connectDB = require("../utils/db");
-const config = require("../config");
+const { getConfigForAutomation } = require("../config");
 const log = require("../utils/logger");
 const { safeGoto, randomDelay } = require("../utils/safeGoto");
 const { dismissAllPopups } = require("../utils/popupHandler");
@@ -8,8 +9,8 @@ const { getContactedInfluencers, markReplied } = require("../services/influencer
 const { checkAndLog } = require("../services/rateLimitService");
 
 // Build a map of contacted usernames for quick lookup
-async function buildContactedMap() {
-  const contacted = await getContactedInfluencers();
+async function buildContactedMap(userId) {
+  const contacted = await getContactedInfluencers(userId);
   const map = new Map();
   for (const inf of contacted) {
     map.set(inf.username.toLowerCase(), inf);
@@ -19,25 +20,15 @@ async function buildContactedMap() {
 
 /**
  * Detect if the influencer has replied in this chat.
- *
- * Uses VISUAL POSITION to distinguish sent vs received messages:
- *   - OUR sent messages are RIGHT-aligned in the chat area
- *   - THEIR received messages are LEFT-aligned in the chat area
- *
- * We use page.evaluate() to get the bounding rect of each message bubble
- * and compare its horizontal center against the chat container's center.
- * Left of center = received (reply). Right of center = sent (ours).
  */
 async function detectReply(page, influencer) {
   try {
     await page.waitForTimeout(3000);
 
     const analysis = await page.evaluate(() => {
-      // Find all message rows
       const rows = document.querySelectorAll('div[role="row"]');
       if (rows.length === 0) return { total: 0, sent: 0, received: 0, lastReceivedText: "" };
 
-      // Walk up from the first row to find the chat container (a parent with reasonable width)
       let containerRect = null;
       let parent = rows[0].parentElement;
       for (let i = 0; i < 10 && parent; i++) {
@@ -59,18 +50,15 @@ async function detectReply(page, influencer) {
       let lastReceivedText = "";
 
       rows.forEach((row) => {
-        // Find actual text bubbles inside each row
         const textEls = row.querySelectorAll('div[dir="auto"], span[dir="auto"]');
         if (textEls.length === 0) return;
 
-        // Collect text content
         const text = Array.from(textEls)
           .map((e) => e.textContent)
           .join(" ")
           .trim();
         if (!text) return;
 
-        // Use the first text element's bounding rect to determine side
         const rect = textEls[0].getBoundingClientRect();
         if (rect.width < 5 || rect.height < 5) return;
 
@@ -111,17 +99,13 @@ async function detectReply(page, influencer) {
 
 /**
  * Navigate directly to a specific influencer's DM thread.
- * This is more reliable than finding them in the inbox list.
  */
 async function openDMThread(page, username) {
-  // Strategy 1: Use Instagram's direct message URL shortcut
-  // Navigate to user profile and click Message button
   try {
     await safeGoto(page, `https://www.instagram.com/${username}/`);
     await page.waitForTimeout(3000);
     await dismissAllPopups(page);
 
-    // Look for Message button
     const msgBtnSelectors = [
       'div[role="button"]:has-text("Message")',
       'button:has-text("Message")',
@@ -139,7 +123,6 @@ async function openDMThread(page, username) {
       } catch (_) {}
     }
 
-    // Scan all buttons for "message" text
     const buttons = await page.locator('button, div[role="button"]').all();
     for (const btn of buttons) {
       try {
@@ -164,12 +147,39 @@ async function openDMThread(page, username) {
 (async () => {
   await connectDB();
 
-  const browser = await chromium.launch({ headless: false });
+  const userId = process.env.AUTOMATION_USER_ID;
+  if (!userId) {
+    log.error("AUTOMATION_USER_ID not set. Cannot run reply check without user context.");
+    process.exit(1);
+  }
+
+  const config = await getConfigForAutomation();
+
+  if (!fs.existsSync(config.sessionPath)) {
+    log.error(`No Instagram session found at ${config.sessionPath}. Run login first for this user.`);
+    process.exit(1);
+  }
+
+  // Validate session file is valid JSON
+  try {
+    JSON.parse(fs.readFileSync(config.sessionPath, "utf-8"));
+  } catch (e) {
+    log.error(`Session file is corrupted: ${config.sessionPath}. Please reconnect Instagram.`);
+    process.exit(1);
+  }
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: false });
+  } catch (err) {
+    log.error(`Failed to launch browser: ${err.message}. Ensure Chromium is installed (npx playwright install chromium).`);
+    process.exit(1);
+  }
   const context = await browser.newContext({ storageState: config.sessionPath });
   const page = await context.newPage();
 
   // Build map of contacted influencers for lookup
-  const contactedMap = await buildContactedMap();
+  const contactedMap = await buildContactedMap(userId);
   log.info(`Tracking ${contactedMap.size} contacted influencers`);
 
   if (contactedMap.size === 0) {
@@ -180,12 +190,7 @@ async function openDMThread(page, username) {
 
   let repliesFound = 0;
 
-  // ─── Strategy: Open each contacted influencer's DM directly ───
-  // Instead of relying on finding chats in the inbox list (which breaks
-  // when Instagram changes DOM), we go to each influencer's profile
-  // and click "Message" to open the existing thread.
-
-  const contacted = await getContactedInfluencers();
+  const contacted = await getContactedInfluencers(userId);
   log.info(`Checking replies for ${contacted.length} contacted influencers`);
 
   for (const influencer of contacted) {
@@ -197,7 +202,7 @@ async function openDMThread(page, username) {
     log.info(`Checking: ${influencer.username}`);
 
     // Rate limit check
-    const rateCheck = await checkAndLog("reply_checked", { influencerUsername: influencer.username });
+    const rateCheck = await checkAndLog(userId, "reply_checked", { influencerUsername: influencer.username });
     if (!rateCheck.allowed) {
       log.warn(`Rate limit reached: ${rateCheck.reason}. Stopping reply check.`);
       break;
@@ -218,7 +223,7 @@ async function openDMThread(page, username) {
       if (result.replyText) {
         log.info(`Reply preview: "${result.replyText.substring(0, 100)}"`);
       }
-      await markReplied(influencer.username);
+      await markReplied(userId, influencer.username);
       repliesFound++;
     } else {
       log.info(`No reply from ${influencer.username}: ${result.reason}`);

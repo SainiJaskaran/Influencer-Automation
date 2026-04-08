@@ -1,4 +1,7 @@
 node_modules/
 session.json
+sessions/*.json
+!sessions/.gitkeep
 .env
 *.log
+settings-override.json

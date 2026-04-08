@@ -1,6 +1,6 @@
 const { chromium } = require("playwright");
 const connectDB = require("../utils/db");
-const config = require("../config");
+const { getConfigForAutomation } = require("../config");
 const log = require("../utils/logger");
 const { safeGoto, randomDelay } = require("../utils/safeGoto");
 const { dismissAllPopups } = require("../utils/popupHandler");
@@ -9,7 +9,10 @@ const { saveInfluencer } = require("../services/influencerService");
 const { analyzeInfluencer } = require("../utils/influencerAnalyzer");
 const { checkAndLog } = require("../services/rateLimitService");
 
+const fs = require("fs");
+
 const processedUsers = new Set();
+let config; // assigned in the IIFE after DB connect
 
 // --- Selectors with fallbacks ---
 const SELECTORS = {
@@ -243,7 +246,34 @@ async function scrapeEngagement(page, username) {
 (async () => {
   await connectDB();
 
-  const browser = await chromium.launch({ headless: false });
+  const userId = process.env.AUTOMATION_USER_ID;
+  if (!userId) {
+    log.error("AUTOMATION_USER_ID not set. Cannot run discovery without user context.");
+    process.exit(1);
+  }
+
+  config = await getConfigForAutomation();
+
+  if (!fs.existsSync(config.sessionPath)) {
+    log.error(`No Instagram session found at ${config.sessionPath}. Run login first for this user.`);
+    process.exit(1);
+  }
+
+  // Validate session file is valid JSON
+  try {
+    JSON.parse(fs.readFileSync(config.sessionPath, "utf-8"));
+  } catch (e) {
+    log.error(`Session file is corrupted: ${config.sessionPath}. Please reconnect Instagram.`);
+    process.exit(1);
+  }
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: false });
+  } catch (err) {
+    log.error(`Failed to launch browser: ${err.message}. Ensure Chromium is installed (npx playwright install chromium).`);
+    process.exit(1);
+  }
   const context = await browser.newContext({ storageState: config.sessionPath });
   const page = await context.newPage();
 
@@ -259,7 +289,7 @@ async function scrapeEngagement(page, username) {
     log.info(`Starting discovery for #${hashtag}`);
 
     // Rate limit check before each hashtag search
-    const searchCheck = await checkAndLog("search_performed", { metadata: { hashtag } });
+    const searchCheck = await checkAndLog(userId, "search_performed", { metadata: { hashtag } });
     if (!searchCheck.allowed) {
       log.warn(`Rate limit reached for searches: ${searchCheck.reason}. Stopping discovery.`);
       break;
@@ -354,7 +384,7 @@ async function scrapeEngagement(page, username) {
         processedUsers.add(username);
 
         // Rate limit check before profile visit
-        const profileCheck = await checkAndLog("profile_visited", { influencerUsername: username });
+        const profileCheck = await checkAndLog(userId, "profile_visited", { influencerUsername: username });
         if (!profileCheck.allowed) {
           log.warn(`Rate limit reached for profile visits: ${profileCheck.reason}. Stopping.`);
           break;
@@ -413,7 +443,7 @@ async function scrapeEngagement(page, username) {
         }
 
         // Save to DB via service (now with analytics data)
-        const { saved } = await saveInfluencer({
+        const { saved } = await saveInfluencer(userId, {
           username,
           followers,
           followersCount: analytics.followersCount,
@@ -545,7 +575,7 @@ async function scrapeEngagement(page, username) {
             continue;
           }
 
-          const { saved } = await saveInfluencer({
+          const { saved } = await saveInfluencer(userId, {
             username,
             followers,
             followersCount: analytics.followersCount,

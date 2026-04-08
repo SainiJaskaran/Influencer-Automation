@@ -1,31 +1,33 @@
 const Campaign = require("../models/Campaign");
 const Influencer = require("../models/Influencer");
+const mongoose = require("mongoose");
 
-async function createCampaign(data) {
-  const campaign = new Campaign(data);
+async function createCampaign(userId, data) {
+  const campaign = new Campaign({ ...data, userId });
   await campaign.save();
   return campaign;
 }
 
-async function getCampaigns(filter = {}) {
-  return Campaign.find(filter).sort({ createdAt: -1 });
+async function getCampaigns(userId, filter = {}) {
+  return Campaign.find({ ...filter, userId }).sort({ createdAt: -1 });
 }
 
-async function getCampaignById(id) {
-  return Campaign.findById(id);
+async function getCampaignById(userId, id) {
+  return Campaign.findOne({ _id: id, userId });
 }
 
-async function updateCampaign(id, updates) {
-  return Campaign.findByIdAndUpdate(id, updates, { new: true });
+async function updateCampaign(userId, id, updates) {
+  return Campaign.findOneAndUpdate({ _id: id, userId }, updates, { new: true });
 }
 
-async function deleteCampaign(id) {
-  return Campaign.findByIdAndDelete(id);
+async function deleteCampaign(userId, id) {
+  return Campaign.findOneAndDelete({ _id: id, userId });
 }
 
-async function getCampaignStats(id) {
+async function getCampaignStats(userId, id) {
+  const campaignId = typeof id === "string" ? new mongoose.Types.ObjectId(id) : id;
   const pipeline = await Influencer.aggregate([
-    { $match: { campaignId: id } },
+    { $match: { campaignId, userId: typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId } },
     {
       $group: {
         _id: null,

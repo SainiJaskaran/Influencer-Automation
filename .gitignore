@@ -13,6 +13,7 @@ settings-override.json
 # Build output
 build/
 dist/
+dist2/
 
 # OS files
 .DS_Store

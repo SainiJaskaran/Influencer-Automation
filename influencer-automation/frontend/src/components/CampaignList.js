@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getCampaigns,
   deleteCampaign,
@@ -41,21 +41,20 @@ export default function CampaignList({ onAction }) {
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  async function loadCampaigns() {
+  const loadCampaigns = useCallback(async () => {
     try {
       const data = await getCampaigns();
       setCampaigns(data);
     } catch (err) {
       onAction({ type: "error", message: `Failed to load campaigns: ${err.message}` });
     }
-  }
+  }, [onAction]);
 
   useEffect(() => {
     loadCampaigns();
     const interval = setInterval(loadCampaigns, 10000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadCampaigns]);
 
   async function handleStart(campaign) {
     setLoading(campaign._id);
